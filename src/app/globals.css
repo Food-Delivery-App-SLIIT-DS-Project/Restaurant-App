@@ -1,0 +1,40 @@
+@import "tailwindcss";
+
+:root {
+  /* Fixed color values - dark mode will NOT override */
+  --color-primary: #1E1E1E;         /* Dark Charcoal */
+  --color-accent-1: #32CD32;       /* Lime Green */
+  --color-accent-3: #196319;       /* Lime Green */
+  --color-accent-2: #FF4C4C;
+  --color-accent-4: #7f2222;        /* Tomato Red */
+  --color-background: #F5F5F5;     /* Light Grey */
+  --color-text: #222222;           /* Jet Black / Charcoal */
+  --color-hover: #FFC107;          /* Yellow Mustard */
+
+  --font-sans: var(--font-geist-sans, Arial, sans-serif);
+  --font-mono: var(--font-geist-mono, monospace);
+}
+
+body {
+  background-color: var(--color-background);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+}
+
+@keyframes fadeIn {
+  0% { opacity: 0; transform: translateY(20px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.8s ease forwards;
+}
+.delay-200 {
+  animation-delay: 0.2s;
+}
+.delay-300 {
+  animation-delay: 0.3s;
+}
+.delay-500 {
+  animation-delay: 0.5s;
+}
