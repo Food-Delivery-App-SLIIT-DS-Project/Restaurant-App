@@ -4,6 +4,7 @@ import React, { useState, useRef } from 'react';
 import { GoogleMap, LoadScript, Marker, StandaloneSearchBox } from '@react-google-maps/api';
 import { useRouter } from 'next/navigation';
 import Cookies from 'js-cookie';
+import { createRestaurant } from '../api/apiRestaurant'; 
 
 const containerStyle = {
   width: '100%',
@@ -69,7 +70,6 @@ const RestaurantForm = () => {
           address: address,
         }));
 
-        // Update the input box value
         if (searchInputRef.current) {
           searchInputRef.current.value = address;
         }
@@ -104,25 +104,12 @@ const RestaurantForm = () => {
     };
 
     try {
-      const response = await fetch('http://localhost:3000/api/v1/restaurant/', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
-      });
-
-      if (response.ok) {
-        console.log('Restaurant created successfully');
-        router.push('/restaurant');
-      } else {
-        const errorData = await response.json();
-        console.error('Failed to create restaurant:', errorData.message || response.statusText);
-        alert('Failed to create restaurant.');
-      }
-    } catch (error) {
-      console.error('Error submitting form:', error);
-      alert('Something went wrong.');
+      await createRestaurant(payload);
+      console.log('Restaurant created successfully');
+      router.push('/restaurant');
+    } catch (error: any) {
+      console.error('Failed to create restaurant:', error.response?.data?.message || error.message);
+      alert('Failed to create restaurant.');
     } finally {
       setIsSubmitting(false);
     }

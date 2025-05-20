@@ -19,7 +19,7 @@ export function middleware(request: NextRequest) {
 
   // If token exists and user tries to visit login, redirect to /order
   if (token && (currentPath === '/')) {
-    return NextResponse.redirect(new URL('/orders', request.url)); // Redirect to `/order`
+    return NextResponse.redirect(new URL('/restaurant', request.url)); // Redirect to `/restaurant`
   }
 
   // Otherwise, allow access to the protected pages

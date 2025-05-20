@@ -1,13 +1,13 @@
 "use client";
+
 import React, { useState, useEffect } from "react";
-import { findRestaurantsByUserId, updateRestaurant } from "../api/apiRestaurant";
+import {
+  findRestaurantsByUserId,
+  updateRestaurant,
+  deleteRestaurant,
+} from "../api/apiRestaurant";
 import Cookies from "js-cookie";
 import router from "next/router";
-
-
-const handleViewMenu = (restaurantId: string) => {
-  router.push(`/menu?restaurantId=${restaurantId}`);
-};
 
 const RestaurantPage: React.FC = () => {
   const [restaurants, setRestaurants] = useState<any[]>([]);
@@ -16,32 +16,36 @@ const RestaurantPage: React.FC = () => {
   const [editingRestaurant, setEditingRestaurant] = useState<any | null>(null);
   const [editFormData, setEditFormData] = useState<any>({});
 
+  const userId = Cookies.get("userId")
+  console.log("userId from cookies:", userId);
+
   useEffect(() => {
     const fetchRestaurantsData = async () => {
-      Cookies.set("userId", "user123456"); // hardcoded for now
-      const userId = Cookies.get("userId"); 
-      console.log("User ID from cookies:", userId); //hardcoded for now
-      console.log("Fetching restaurants for user ID:", Cookies.get("userId")); 
+      if (!userId) {
+        setError("User ID not found. Please log in.");
+        setLoading(false);
+        return;
+      }
 
+      try {
+        const data = await findRestaurantsByUserId(userId);
+        //console.log("API response:", data);
+        const restaurantArray = Array.isArray(data) ? data : [];
+        setRestaurants(restaurantArray);
 
-      if (userId) {
-        try {
-          const data = await findRestaurantsByUserId(userId);
-          setRestaurants(Array.isArray(data) ? data : []);
-        } catch (err) {
-          console.error("Fetch error:", err);
-          setError("Error fetching restaurants.");
-        } finally {
-          setLoading(false);
-        }
-      } else {
-        setError("User ID not found in cookies.");
+        const ids = restaurantArray.map((r) => r.restaurantId);
+        Cookies.set("restaurantIds", JSON.stringify(ids));
+        console.log("Restaurant IDs stored in cookies:", ids);
+      } catch (err) {
+        console.error("Fetch error:", err);
+        setError("Error fetching restaurants.");
+      } finally {
         setLoading(false);
       }
     };
 
     fetchRestaurantsData();
-  }, []);
+  }, [userId]);
 
   const toggleIsOpen = (restaurantId: string) => {
     setRestaurants((prevState) =>
@@ -71,7 +75,9 @@ const RestaurantPage: React.FC = () => {
     });
   };
 
-  const handleEditFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+  const handleEditFormChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
+  ) => {
     const { name, value } = e.target;
     setEditFormData((prevData: any) => ({
       ...prevData,
@@ -111,24 +117,49 @@ const RestaurantPage: React.FC = () => {
     }
   };
 
+  const handleDeleteRestaurant = async (restaurantId: string) => {
+    const confirmDelete = window.confirm("Are you sure you want to delete this restaurant?");
+    if (!confirmDelete) return;
+
+    try {
+      await deleteRestaurant(restaurantId);
+      const updatedRestaurants = restaurants.filter((r) => r.restaurantId !== restaurantId);
+      setRestaurants(updatedRestaurants);
+
+      const updatedIds = updatedRestaurants.map((r) => r.restaurantId);
+      sessionStorage.setItem("restaurantIds", JSON.stringify(updatedIds));
+
+      alert("Restaurant deleted successfully.");
+    } catch (err) {
+      console.error("Error deleting restaurant:", err);
+      alert("Failed to delete restaurant.");
+    }
+  };
+
+  const handleViewMenu = (restaurantId: string) => {
+    sessionStorage.setItem("selectedRestaurantId", restaurantId);
+    router.push(`/menu?restaurantId=${restaurantId}`);
+  };
+
   const closeModal = () => {
     setEditingRestaurant(null);
   };
 
   if (loading) return <div>Loading...</div>;
-  if (error) return <div>{error}</div>;
+  if (error) return <div className="text-red-600">{error}</div>;
 
   return (
     <div className="min-h-screen bg-gray-100 p-6">
-    <div className="flex justify-end mb-6">
-      <button
-        onClick={() => window.location.href = '/registration'} 
-        className="px-6 py-2 bg-green-500 text-white rounded hover:bg-green-600"
-      >
-        Add Restaurant
-      </button>
-    </div>
-      {(!Array.isArray(restaurants) || restaurants.length === 0) ? (
+      <div className="flex justify-end mb-6">
+        <button
+          onClick={() => window.location.href = '/registration'}
+          className="px-6 py-2 bg-green-500 text-white rounded hover:bg-green-600"
+        >
+          Add Restaurant
+        </button>
+      </div>
+
+      {restaurants.length === 0 ? (
         <div>No restaurants found for this user.</div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -145,8 +176,19 @@ const RestaurantPage: React.FC = () => {
                 />
               </div>
 
-              <div className="mt-4 flex-1">
-                <h2 className="text-xl font-semibold">{restaurant.name}</h2>
+              <div className="mt-2 flex-1">
+                <div className="flex justify-end">
+                  <p
+                    className={`inline-block px-3 py-1 text-sm font-medium rounded-full ${
+                      restaurant.isVerified
+                        ? "bg-green-100 text-green-700"
+                        : "bg-red-100 text-red-700"
+                    }`}
+                  >
+                    {restaurant.isVerified ? "Verified" : "Pending Verification"}
+                  </p>
+                </div>
+                <h2 className="text-xl font-semibold">{restaurant.name} </h2>
                 <p className="text-gray-600">{restaurant.address}</p>
                 <p className="text-gray-600 mt-2">Phone: {restaurant.phone}</p>
                 <p className="text-gray-600">Cuisine Type: {restaurant.cuisineType}</p>
@@ -158,7 +200,7 @@ const RestaurantPage: React.FC = () => {
                 <p className="text-gray-600 mt-2">Ratings: {restaurant.numberOfRatings}</p>
               </div>
 
-              <div className="mt-6 flex justify-between">
+              <div className="mt-6 flex flex-wrap gap-2 justify-between">
                 <button
                   onClick={() => handleEditDetails(restaurant)}
                   className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
@@ -174,19 +216,26 @@ const RestaurantPage: React.FC = () => {
                 >
                   {restaurant.isOpen ? "Close" : "Open"}
                 </button>
+
                 <button
-                    onClick={() => handleViewMenu(restaurant.restaurantId)}
-                    className="bg-yellow-400 text-white py-2 px-4 rounded hover:bg-yellow-700"
-                  >
-                    View Menu
-                  </button>
+                  onClick={() => handleViewMenu(restaurant.restaurantId)}
+                  className="bg-yellow-400 text-white py-2 px-4 rounded hover:bg-yellow-700"
+                >
+                  View Menu
+                </button>
+
+                <button
+                  onClick={() => handleDeleteRestaurant(restaurant.restaurantId)}
+                  className="bg-red-600 text-white py-2 px-4 rounded hover:bg-red-700"
+                >
+                  Delete
+                </button>
               </div>
             </div>
           ))}
         </div>
       )}
 
-      {/* EDIT MODAL */}
       {editingRestaurant && (
         <div className="fixed inset-0 bg-black/50 flex justify-center items-center z-50">
           <div className="bg-white rounded-lg p-8 w-half">
