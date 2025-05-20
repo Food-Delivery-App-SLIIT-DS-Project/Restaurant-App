@@ -39,7 +39,7 @@ export default function Home() {
     setTimeout(() => setShowToast(false), 3000);
   };
 
-  const handleLogin = async () => {
+  /*const handleLogin = async () => {
     if (!loginEmail || !loginPassword) {
       triggerToast('Please enter both email and password.', 'error');
       return;
@@ -80,7 +80,41 @@ export default function Home() {
     } finally {
       setIsLoading(false);
     }
+  };*/
+
+  const handleLogin = async () => {
+    // Simulate login without validation or API
+    setIsLoading(true);
+    try {
+      // Simulated tokens
+      const dummyAccessToken = 'dummy-access-token';
+      const dummyRefreshToken = 'dummy-refresh-token';
+      const dummyUserId = 'user123456';
+
+      Cookies.set('accessToken', dummyAccessToken);
+      Cookies.set('refreshToken', dummyRefreshToken);
+      Cookies.set('userId', dummyUserId);
+
+      console.log('✅ Dummy login success');
+      console.log('Access Token:', Cookies.get('accessToken'));
+      console.log('Refresh Token:', Cookies.get('refreshToken'));
+      console.log('User ID:', Cookies.get('userId'));
+
+      triggerToast('Login successful!', 'success');
+
+      // Close modal after short delay
+      setTimeout(() => {
+        setShowLogin(false);
+        window.location.reload();
+      }, 1000);
+    } catch (error: any) {
+      console.error('Dummy login error:', error.message);
+      triggerToast('Login failed. Please try again.', 'error');
+    } finally {
+      setIsLoading(false);
+    }
   };
+
 
   const handleSignup = async () => {
     if (!signupFullName || !signupEmail || !signupPhoneNumber || !signupPassword) {

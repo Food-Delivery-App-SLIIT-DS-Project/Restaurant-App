@@ -1,7 +1,14 @@
 "use client";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
+import Cookies from "js-cookie";
+import {
+  getMenusByRestaurantId,
+  createMenu,
+  updateMenu,
+  deleteMenu,
+  updateMenuStatus,
+} from "../api/menuApi";
 
-// Define the Menu model here
 interface Menu {
   menuId: string;
   name: string;
@@ -9,41 +16,34 @@ interface Menu {
   price: number;
   imageUrl: string;
   available: boolean;
-  restaurantId: string; // Assuming a reference to a restaurant
+  restaurantId: string;
 }
 
-const MenuePage: React.FC = () => {
-  const [menus, setMenus] = useState<Menu[]>([
-    {
-      menuId: "1",
-      name: "Cheeseburger",
-      description: "A delicious cheeseburger with fresh ingredients.",
-      price: 5.99,
-      imageUrl: "https://via.placeholder.com/150",
-      available: true,
-      restaurantId: "101",
-    },
-    {
-      menuId: "2",
-      name: "Veggie Pizza",
-      description: "A healthy pizza loaded with fresh vegetables.",
-      price: 7.99,
-      imageUrl: "https://via.placeholder.com/150",
-      available: true,
-      restaurantId: "101",
-    },
-    {
-      menuId: "3",
-      name: "Pasta Alfredo",
-      description: "A creamy pasta dish with Alfredo sauce.",
-      price: 8.49,
-      imageUrl: "https://via.placeholder.com/150",
-      available: true,
-      restaurantId: "102",
-    },
-  ]);
+const restaurantIds = JSON.parse(Cookies.get("restaurantIds") || "[]");
+const RESTAURANT_ID = restaurantIds?.[0] || "";
+
+const MenuPage: React.FC = () => {
+  const [menus, setMenus] = useState<Menu[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingMenu, setEditingMenu] = useState<Menu | null>(null);
+
+  useEffect(() => {
+    const fetchMenus = async () => {
+      if (!RESTAURANT_ID) {
+        console.warn("No valid restaurant ID found.");
+        return;
+      }
+
+      try {
+        const fetchedMenus = await getMenusByRestaurantId(RESTAURANT_ID);
+        setMenus(Array.isArray(fetchedMenus) ? fetchedMenus : []);
+      } catch (error) {
+        console.error("Failed to fetch menus:", error);
+      }
+    };
+
+    fetchMenus();
+  }, []);
 
   const openAddModal = () => {
     setEditingMenu(null);
@@ -55,36 +55,42 @@ const MenuePage: React.FC = () => {
     setIsModalOpen(true);
   };
 
-  const closeModal = () => {
-    setIsModalOpen(false);
-  };
+  const closeModal = () => setIsModalOpen(false);
 
-  const handleSave = (menu: Menu) => {
-    if (editingMenu) {
-      // Update existing menu
-      setMenus((prev) =>
-        prev.map((item) => (item.menuId === menu.menuId ? menu : item))
-      );
-    } else {
-      // Create new menu
-      const newMenu = { ...menu, menuId: `${menus.length + 1}` }; // Dummy new ID
-      setMenus((prev) => [...prev, newMenu]);
+  const handleSave = async (menu: Menu) => {
+    try {
+      if (editingMenu) {
+        const updated = await updateMenu(editingMenu.menuId, menu);
+        setMenus((prev) =>
+          prev.map((item) => (item.menuId === updated.menuId ? updated : item))
+        );
+      } else {
+        const created = await createMenu({ ...menu, restaurantId: RESTAURANT_ID });
+        setMenus((prev) => [...prev, created]);
+      }
+      closeModal();
+    } catch (error) {
+      console.error("Failed to save menu:", error);
     }
-    closeModal();
   };
 
-  const handleDelete = (menuId: string) => {
-    setMenus((prev) => prev.filter((menu) => menu.menuId !== menuId));
+  const handleDelete = async (menuId: string) => {
+    try {
+      await deleteMenu(menuId);
+      setMenus((prev) => prev.filter((menu) => menu.menuId !== menuId));
+    } catch (error) {
+      console.error("Failed to delete menu:", error);
+    }
   };
 
-  const toggleAvailability = (menuId: string, currentAvailable: boolean) => {
-    const updatedMenu = menus.find((menu) => menu.menuId === menuId);
-    if (updatedMenu) {
+  const toggleAvailability = async (menuId: string, currentAvailable: boolean) => {
+    try {
+      const updated = await updateMenuStatus(menuId, !currentAvailable);
       setMenus((prev) =>
-        prev.map((menu) =>
-          menu.menuId === menuId ? { ...menu, available: !currentAvailable } : menu
-        )
+        prev.map((menu) => (menu.menuId === updated.menuId ? updated : menu))
       );
+    } catch (error) {
+      console.error("Failed to toggle availability:", error);
     }
   };
 
@@ -117,7 +123,9 @@ const MenuePage: React.FC = () => {
               <div className="p-4 flex flex-col flex-1">
                 <h2 className="text-lg font-semibold mb-2">{menu.name}</h2>
                 <p className="text-gray-600 text-sm mb-2 flex-1">{menu.description}</p>
-                <p className="text-gray-800 font-bold mb-2">${menu.price.toFixed(2)}</p>
+                <p className="text-gray-800 font-bold mb-2">
+                  Rs. {menu.price.toFixed(2)}
+                </p>
                 <span
                   className={`inline-block text-xs px-2 py-1 rounded mb-2 ${
                     menu.available
@@ -162,20 +170,26 @@ const MenuePage: React.FC = () => {
           menu={editingMenu}
           onClose={closeModal}
           onSave={handleSave}
+          defaultRestaurantId={RESTAURANT_ID}
         />
       )}
     </div>
   );
 };
 
-// Dummy modal component for adding/editing menu
 interface MenuModalProps {
   menu: Menu | null;
   onClose: () => void;
   onSave: (menu: Menu) => void;
+  defaultRestaurantId: string;
 }
 
-const MenuModal: React.FC<MenuModalProps> = ({ menu, onClose, onSave }) => {
+const MenuModal: React.FC<MenuModalProps> = ({
+  menu,
+  onClose,
+  onSave,
+  defaultRestaurantId,
+}) => {
   const [newMenu, setNewMenu] = useState<Menu>(
     menu ?? {
       menuId: "",
@@ -184,60 +198,97 @@ const MenuModal: React.FC<MenuModalProps> = ({ menu, onClose, onSave }) => {
       price: 0,
       imageUrl: "",
       available: true,
-      restaurantId: "",
+      restaurantId: defaultRestaurantId,
     }
   );
+  const [isUploading, setIsUploading] = useState(false);
+
+  const CLOUDINARY_UPLOAD_PRESET = "unsigned_uploads";
+  const CLOUDINARY_CLOUD_NAME = "dks7sqgjd";
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setNewMenu((prev) => ({
       ...prev,
-      [name]: value,
+      [name]: name === "price" ? parseFloat(value) : value,
     }));
   };
 
-  const handleSubmit = () => {
-    onSave(newMenu);
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploading(true);
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
+
+    try {
+      const res = await fetch(
+        `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`,
+        {
+          method: "POST",
+          body: formData,
+        }
+      );
+      const data = await res.json();
+      setNewMenu((prev) => ({
+        ...prev,
+        imageUrl: data.secure_url,
+      }));
+    } catch (err) {
+      console.error("Image upload failed", err);
+      alert("Image upload failed.");
+    } finally {
+      setIsUploading(false);
+    }
   };
 
+  const handleSubmit = () => onSave(newMenu);
+
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
-      <div className="bg-white p-6 rounded shadow-lg w-1/3">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+      <div className="bg-white p-6 rounded shadow-lg w-full max-w-md">
         <h2 className="text-xl font-bold mb-4">{menu ? "Edit" : "Add"} Menu</h2>
-        <div className="mb-4">
-          <input
-            type="text"
-            name="name"
-            placeholder="Menu Name"
-            value={newMenu.name}
-            onChange={handleChange}
-            className="border w-full p-2 mb-2"
-          />
-          <input
-            type="text"
-            name="description"
-            placeholder="Description"
-            value={newMenu.description}
-            onChange={handleChange}
-            className="border w-full p-2 mb-2"
-          />
-          <input
-            type="number"
-            name="price"
-            placeholder="Price"
-            value={newMenu.price}
-            onChange={handleChange}
-            className="border w-full p-2 mb-2"
-          />
-          <input
-            type="text"
-            name="imageUrl"
-            placeholder="Image URL"
-            value={newMenu.imageUrl}
-            onChange={handleChange}
-            className="border w-full p-2 mb-2"
-          />
-        </div>
+        <input
+          type="text"
+          name="name"
+          placeholder="Menu Name"
+          value={newMenu.name}
+          onChange={handleChange}
+          className="border w-full p-2 mb-2"
+        />
+        <input
+          type="text"
+          name="description"
+          placeholder="Description"
+          value={newMenu.description}
+          onChange={handleChange}
+          className="border w-full p-2 mb-2"
+        />
+        <input
+          type="number"
+          name="price"
+          placeholder="Price"
+          onChange={handleChange}
+          className="border w-full p-2 mb-2"
+        />
+        <input
+          type="file"
+          accept="image/*"
+          onChange={handleImageUpload}
+          className="border w-full p-2 mb-2"
+        />
+        {isUploading && <p className="text-sm text-blue-500 mb-2">Uploading image...</p>}
+        <input
+          type="text"
+          name="restaurantId"
+          placeholder="Restaurant ID"
+          value={newMenu.restaurantId}
+          onChange={handleChange}
+          className="border w-full p-2 mb-4 text-gray-500"
+          readOnly
+        />
         <div className="flex justify-between">
           <button
             onClick={onClose}
@@ -247,7 +298,8 @@ const MenuModal: React.FC<MenuModalProps> = ({ menu, onClose, onSave }) => {
           </button>
           <button
             onClick={handleSubmit}
-            className="bg-blue-600 text-white px-4 py-2 rounded"
+            className={`bg-blue-600 text-white px-4 py-2 rounded ${isUploading ? "opacity-50 cursor-not-allowed" : ""}`}
+            disabled={isUploading}
           >
             Save
           </button>
@@ -257,4 +309,4 @@ const MenuModal: React.FC<MenuModalProps> = ({ menu, onClose, onSave }) => {
   );
 };
 
-export default MenuePage;
+export default MenuPage;
