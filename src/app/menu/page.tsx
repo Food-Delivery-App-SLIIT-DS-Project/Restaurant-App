@@ -100,7 +100,7 @@ const MenuPage: React.FC = () => {
         <h1 className="text-2xl font-bold">Menu Page</h1>
         <button
           onClick={openAddModal}
-          className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+          className=" bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
         >
           Add Menu
         </button>
@@ -140,11 +140,11 @@ const MenuPage: React.FC = () => {
                     onClick={() => toggleAvailability(menu.menuId, menu.available)}
                     className={`flex-1 py-2 rounded text-white ${
                       menu.available
-                        ? "bg-red-500 hover:bg-red-600"
+                        ? "bg-red-500 hover:bg-red-600 px-1"
                         : "bg-green-500 hover:bg-green-600"
                     }`}
                   >
-                    {menu.available ? "Mark Unavailable" : "Mark Available"}
+                    {menu.available ? "Unavailable" : "Available"}
                   </button>
                   <button
                     onClick={() => openEditModal(menu)}

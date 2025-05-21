@@ -89,7 +89,7 @@ export default function Home() {
       // Simulated tokens
       const dummyAccessToken = 'dummy-access-token';
       const dummyRefreshToken = 'dummy-refresh-token';
-      const dummyUserId = 'user123456';
+      const dummyUserId = '2603b28b-2ef8-46e4-8461-8d98897db7b1';
 
       Cookies.set('accessToken', dummyAccessToken);
       Cookies.set('refreshToken', dummyRefreshToken);

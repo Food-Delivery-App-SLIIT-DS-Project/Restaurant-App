@@ -1,18 +1,31 @@
-import axios from 'axios'; 
+import axios from 'axios';
 
 // Read from environment
-const baseURL = process.env.PUBLIC_BACKEND_URL;
+const baseURL = process.env.NEXT_PUBLIC_BACKEND_URL;
 
 const API = axios.create({
-  baseURL: baseURL,
+  baseURL,
   withCredentials: true,
 });
 
-// Define AuthResponse interface
+// Common interface from backend structure
+interface ApiResponse<T> {
+  code: number;
+  msg: string;
+  data: T;
+}
+
+interface AuthToken {
+  access: string;
+  refresh: string;
+  expire_seconds: number;
+  uid: string;
+}
+
 interface AuthResponse {
-  accessToken: string;
-  refreshToken: string;
-  userId: string;
+  role: string;
+  user: any;
+  token: AuthToken;
 }
 
 // ----------------- Auth APIs -----------------
@@ -25,75 +38,83 @@ export const signUp = async (data: {
   role: string;
 }): Promise<AuthResponse> => {
   try {
-    const response = await API.post<AuthResponse>('/auth/signup', data);
-    return response.data;
+    const response = await API.post<ApiResponse<AuthResponse>>('/auth/signup', data);
+    return response.data.data;
   } catch (error) {
     console.error('Error during sign up:', error);
     throw error;
   }
 };
 
-
-export const signIn = async (data: { email: string; password: string }) => {
+export const signIn = async (data: {
+  email: string;
+  password: string;
+  fcmToken?: string;
+}): Promise<
+  | { success: true; role: string; user: any; token: AuthToken }
+  | { success: false; message: string }
+> => {
   try {
-    // Make the request to the backend
-    const res = await axios.post(`http://localhost:3000/api/v1/auth/signin`, data);
+    const res = await API.post<ApiResponse<AuthResponse>>('/auth/signin', data);
 
-    // Check if the response is successful (code 0 indicates success)
     if (res.data.code === 0) {
-      // Return the user data and token on successful login
       return {
         success: true,
         role: res.data.data.role,
         user: res.data.data.user,
-        token: res.data.data.token
+        token: res.data.data.token,
       };
     } else {
-      // If there's no success code or the response isn't in the expected format, handle it
       return {
         success: false,
-        message: 'Unexpected response format'
+        message: res.data.msg || 'Unexpected response format',
       };
     }
-  } catch (error) {
-    // Handle error responses from the backend (e.g., 401, 400)
+  } catch (error: any) {
     if (error.response) {
-      // Error response from backend
       if (error.response.status === 401) {
-        return {
-          success: false,
-          message: 'Invalid email or password'
-        };
+        return { success: false, message: 'Invalid email or password' };
       }
-      // Other HTTP errors can be handled here
       return {
         success: false,
-        message: error.response.data?.message || 'An error occurred'
+        message: error.response.data?.message || 'An error occurred',
       };
     } else {
-      // If the request itself fails (e.g., network issues)
       return {
         success: false,
-        message: 'Network error or server unreachable'
+        message: 'Network error or server unreachable',
       };
     }
   }
 };
 
-
-export const logout = async (refreshToken: string): Promise<void> => {
+export const logout = async (
+  refreshToken: string,
+  accessToken: string
+): Promise<void> => {
   try {
-    await API.post('/auth/logout', { refreshToken });
+    await API.post(
+      '/auth/logout',
+      { refreshToken },
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      }
+    );
   } catch (error) {
     console.error('Error during logout:', error);
     throw error;
   }
 };
 
-export const refreshToken = async (refreshToken: string): Promise<AuthResponse> => {
+// These functions assume matching backend routes exist
+export const refreshToken = async (refreshToken: string): Promise<AuthToken> => {
   try {
-    const response = await API.post<AuthResponse>('/auth/refresh-token', { refreshToken });
-    return response.data;
+    const response = await API.post<ApiResponse<AuthToken>>('/auth/refresh-token', {
+      refreshToken,
+    });
+    return response.data.data;
   } catch (error) {
     console.error('Error during token refresh:', error);
     throw error;
@@ -102,8 +123,8 @@ export const refreshToken = async (refreshToken: string): Promise<AuthResponse> 
 
 export const verifyToken = async (token: string): Promise<boolean> => {
   try {
-    const response = await API.post<boolean>('/auth/verify-token', { token });
-    return response.data;
+    const response = await API.post<ApiResponse<boolean>>('/auth/verify-token', { token });
+    return response.data.data;
   } catch (error) {
     console.error('Error during token verification:', error);
     throw error;

@@ -7,6 +7,7 @@ import {
   setOrderPreparing,
   setOrderWaitingForPickup,
 } from "../api/orderApi";
+import { getMenuById } from "../api/menuApi"; // ✅ Import the menu fetcher
 
 interface OrderItem {
   menuId: string;
@@ -26,19 +27,16 @@ interface OrderResponse {
 
 const OrderPage: React.FC = () => {
   const [orders, setOrders] = useState<OrderResponse[]>([]);
+  const [menuNames, setMenuNames] = useState<{ [key: string]: string }>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [preparingOrders, setPreparingOrders] = useState<string[]>([]);
 
   let restaurantId: string | null = null;
 
   try {
-    const raw = Cookies.get("restaurantIds") || "[]";
-    const restaurantIds = JSON.parse(raw);
-    if (Array.isArray(restaurantIds) && restaurantIds.length > 0) {
-      restaurantId = restaurantIds[0];
-    } else {
-      throw new Error("No restaurant ID found");
-    }
+    const restaurantIds = JSON.parse(Cookies.get("restaurantIds") || "[]");
+    restaurantId = restaurantIds?.[0] || "";
   } catch (e) {
     console.error("Failed to parse restaurantIds from cookies", e);
     restaurantId = null;
@@ -63,13 +61,40 @@ const OrderPage: React.FC = () => {
     }
   };
 
+  const fetchMenuNames = async (orders: OrderResponse[]) => {
+    const uniqueMenuIds = new Set(
+      orders.flatMap((order) => order.items.map((item) => item.menuId))
+    );
+
+    for (const id of uniqueMenuIds) {
+      if (!menuNames[id]) {
+        try {
+          const menu = await getMenuById(id);
+          setMenuNames((prev) => ({ ...prev, [id]: menu.name }));
+        } catch (e) {
+          console.error(`Failed to fetch menu name for ID ${id}`, e);
+          setMenuNames((prev) => ({ ...prev, [id]: "Unknown Item" }));
+        }
+      }
+    }
+  };
+
   useEffect(() => {
-    fetchOrders();
+    const load = async () => {
+      await fetchOrders();
+    };
+    load();
     const interval = setInterval(() => {
       fetchOrders();
     }, 5000);
     return () => clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    if (orders.length > 0) {
+      fetchMenuNames(orders);
+    }
+  }, [orders]);
 
   const updateOrderLocally = (orderId: string, newStatus: string) => {
     setOrders((prev) =>
@@ -92,6 +117,7 @@ const OrderPage: React.FC = () => {
     try {
       await setOrderPreparing(orderId);
       updateOrderLocally(orderId, "PREPARING");
+      setPreparingOrders((prev) => [...prev, orderId]);
     } catch (err) {
       console.error("Failed to set order to PREPARING:", err);
     }
@@ -154,8 +180,10 @@ const OrderPage: React.FC = () => {
                     <ul className="list-disc ml-4">
                       {order.items?.map((item, index) => (
                         <li key={index}>
-                          <span className="font-medium">{item.menuId}</span> - Qty:{" "}
-                          {item.quantity}
+                          <span className="font-medium">
+                            {menuNames[item.menuId] || item.menuId}
+                          </span>{" "}
+                          - Qty: {item.quantity}
                         </li>
                       )) || <li>No items</li>}
                     </ul>
@@ -171,9 +199,16 @@ const OrderPage: React.FC = () => {
                     )}
                     <button
                       onClick={() => handlePreparing(order.orderId)}
-                      className="bg-yellow-500 hover:bg-yellow-600 text-white px-3 py-1 rounded text-sm block w-full"
+                      disabled={preparingOrders.includes(order.orderId)}
+                      className={`${
+                        preparingOrders.includes(order.orderId)
+                          ? "bg-gray-400 cursor-not-allowed"
+                          : "bg-yellow-500 hover:bg-yellow-600"
+                      } text-white px-3 py-1 rounded text-sm block w-full`}
                     >
-                      Accept and Prepare
+                      {preparingOrders.includes(order.orderId)
+                        ? "Preparing..."
+                        : "Accept and Prepare"}
                     </button>
                     <button
                       onClick={() => handleWaitingForPickup(order.orderId)}

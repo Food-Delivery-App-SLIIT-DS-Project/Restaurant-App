@@ -1,85 +1,229 @@
 "use client";
+import React, { useEffect, useRef, useState } from "react";
+import Cookies from "js-cookie";
+import {
+  getOrdersByRestaurantId,
+  updateOrderStatus,
+  setOrderPreparing,
+  setOrderWaitingForPickup,
+} from "../api/orderApi";
 
-import React, { useEffect, useState } from 'react';
-import { findRestaurantsByUserId } from '../api/apiRestaurant';
+interface OrderItem {
+  menuId: string;
+  quantity: number;
+  price: number;
+}
 
-const TestPage = () => {
-  const [restaurants, setRestaurants] = useState([]);
+interface OrderResponse {
+  orderId: string;
+  customerId: string;
+  restaurantId: string;
+  deliveryId: string;
+  status: string;
+  totalPrice: number;
+  items: OrderItem[];
+}
+
+const OrderPage: React.FC = () => {
+  const [orders, setOrders] = useState<OrderResponse[]>([]);
   const [loading, setLoading] = useState(true);
-  const [audioStarted, setAudioStarted] = useState(false); // ✅ track audio init
-  const userId = 'user123456';
+  const [error, setError] = useState<string | null>(null);
+  const [notificationsEnabled, setNotificationsEnabled] = useState<boolean>(
+    () => localStorage.getItem("notificationsEnabled") === "true"
+  );
+  const prevOrderCountRef = useRef<number>(0);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  let restaurantId: string | null = null;
+
+  try {
+    const raw = Cookies.get("restaurantIds") || "[]";
+    const restaurantIds = JSON.parse(raw);
+    if (Array.isArray(restaurantIds) && restaurantIds.length > 0) {
+      restaurantId = restaurantIds[0];
+    } else {
+      throw new Error("No restaurant ID found");
+    }
+  } catch (e) {
+    console.error("Failed to parse restaurantIds from cookies", e);
+    restaurantId = null;
+  }
+
+  const fetchOrders = async () => {
+    if (!restaurantId) {
+      setError("Restaurant ID not available.");
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const data = await getOrdersByRestaurantId(restaurantId);
+      setOrders(data || []);
+      setError(null);
+
+      // 🔔 Check for new orders
+      if (
+        notificationsEnabled &&
+        data.length > prevOrderCountRef.current
+      ) {
+        if (!audioRef.current) {
+          audioRef.current = new Audio("/notification.mp3");
+        }
+        try {
+          await audioRef.current.play();
+        } catch (err) {
+          console.warn("Audio play blocked:", err);
+        }
+      }
+
+      prevOrderCountRef.current = data.length;
+    } catch (err) {
+      console.error("Failed to fetch orders:", err);
+      setError("Failed to fetch orders.");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const fetchRestaurants = async () => {
-      try {
-        const data = await findRestaurantsByUserId(userId);
-        setRestaurants(data);
-      } catch (error) {
-        console.error('Failed to fetch restaurants:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchRestaurants();
-  }, []);
-
-  const handlePlayAudio = () => {
-    const audio = new Audio('/notification.mp3');
-
-    // play once immediately
-    audio.play().catch((err) => console.error('Audio play error:', err));
-
-    // then repeat every 10 seconds
-    const interval = setInterval(() => {
-      const newAudio = new Audio('/notification.mp3');
-      newAudio.play().catch((err) => console.error('Audio play error:', err));
-    }, 3000);
-
-    setAudioStarted(true);
-
-    // Optional: clean up when user navigates away
+    fetchOrders();
+    const interval = setInterval(fetchOrders, 5000);
     return () => clearInterval(interval);
+  }, [notificationsEnabled]);
+
+  const updateOrderLocally = (orderId: string, newStatus: string) => {
+    setOrders((prev) =>
+      prev.map((order) =>
+        order.orderId === orderId ? { ...order, status: newStatus } : order
+      )
+    );
+  };
+
+  const handleAcceptOrder = async (orderId: string) => {
+    try {
+      await updateOrderStatus(orderId, "Accepted");
+      updateOrderLocally(orderId, "Accepted");
+    } catch (err) {
+      console.error("Failed to update order status:", err);
+    }
+  };
+
+  const handlePreparing = async (orderId: string) => {
+    try {
+      await setOrderPreparing(orderId);
+      updateOrderLocally(orderId, "PREPARING");
+    } catch (err) {
+      console.error("Failed to set order to PREPARING:", err);
+    }
+  };
+
+  const handleWaitingForPickup = async (orderId: string) => {
+    try {
+      await setOrderWaitingForPickup(orderId);
+      updateOrderLocally(orderId, "WAITING_FOR_PICKUP");
+    } catch (err) {
+      console.error("Failed to set order to WAITING_FOR_PICKUP:", err);
+    }
+  };
+
+  const toggleNotification = () => {
+    const newVal = !notificationsEnabled;
+    setNotificationsEnabled(newVal);
+    localStorage.setItem("notificationsEnabled", String(newVal));
   };
 
   return (
-    <div style={{ padding: '20px' }}>
-      <h1>Test Page</h1>
-      <p>Restaurants for User ID: {userId}</p>
+    <div className="p-4 max-w-5xl mx-auto relative">
+      {/* 🔔 Toggle Notification Button */}
+      <button
+        onClick={toggleNotification}
+        className="absolute top-4 right-4 bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded text-sm"
+      >
+        {notificationsEnabled ? "Mute" : "Enable Notifications"}
+      </button>
 
-      {!audioStarted && (
-        <button
-          onClick={handlePlayAudio}
-          className="px-4 py-2 bg-blue-600 text-white rounded mb-4"
-        >
-          🔔 Start Notifications
-        </button>
-      )}
+      <h1 className="text-2xl font-bold text-center mb-6">Orders Page</h1>
 
       {loading ? (
-        <p>Loading...</p>
-      ) : restaurants.length === 0 ? (
-        <p>No restaurants found.</p>
+        <p className="text-center text-gray-500">Loading orders...</p>
+      ) : error ? (
+        <p className="text-center text-red-500">{error}</p>
+      ) : orders && orders.length === 0 ? (
+        <p className="text-center text-gray-500">No orders available.</p>
       ) : (
-        <ul>
-          {restaurants.map((restaurant: any) => (
-            <li key={restaurant.restaurantId} style={{ marginBottom: '20px' }}>
-              <h3>{restaurant.name}</h3>
-              <p><strong>Address:</strong> {restaurant.address}</p>
-              <p><strong>Cuisine:</strong> {restaurant.cuisineType}</p>
-              <p><strong>Open Hours:</strong> {restaurant.openHours}</p>
-              <p><strong>Description:</strong> {restaurant.description}</p>
-              <img
-                src={restaurant.imageReference}
-                alt={restaurant.name}
-                style={{ width: '200px', height: 'auto', borderRadius: '8px' }}
-              />
-            </li>
-          ))}
-        </ul>
+        <div className="overflow-x-auto">
+          <table className="min-w-full bg-white border border-gray-200">
+            <thead>
+              <tr className="bg-gray-100">
+                <th className="py-2 px-4 border-b">Order ID</th>
+                <th className="py-2 px-4 border-b">Status</th>
+                <th className="py-2 px-4 border-b">Total Price</th>
+                <th className="py-2 px-4 border-b">Items</th>
+                <th className="py-2 px-4 border-b">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {orders.map((order) => (
+                <tr key={order.orderId} className="text-center">
+                  <td className="py-2 px-4 border-b">{order.orderId}</td>
+                  <td className="py-2 px-4 border-b">
+                    <span
+                      className={`inline-block px-2 py-1 text-xs rounded ${
+                        order.status === "Accepted"
+                          ? "bg-green-100 text-green-700"
+                          : order.status === "PREPARING"
+                          ? "bg-blue-100 text-blue-700"
+                          : order.status === "WAITING_FOR_PICKUP"
+                          ? "bg-purple-100 text-purple-700"
+                          : "bg-yellow-100 text-yellow-700"
+                      }`}
+                    >
+                      {order.status}
+                    </span>
+                  </td>
+                  <td className="py-2 px-4 border-b">
+                    Rs.{order.totalPrice.toFixed(2)}
+                  </td>
+                  <td className="py-2 px-4 border-b text-left">
+                    <ul className="list-disc ml-4">
+                      {order.items?.map((item, index) => (
+                        <li key={index}>
+                          <span className="font-medium">{item.menuId}</span> - Qty:{" "}
+                          {item.quantity}
+                        </li>
+                      )) || <li>No items</li>}
+                    </ul>
+                  </td>
+                  <td className="py-2 px-4 border-b space-y-2">
+                    {order.status === "Pending" && (
+                      <button
+                        onClick={() => handleAcceptOrder(order.orderId)}
+                        className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-sm block w-full"
+                      >
+                        Accept
+                      </button>
+                    )}
+                    <button
+                      onClick={() => handlePreparing(order.orderId)}
+                      className="bg-yellow-500 hover:bg-yellow-600 text-white px-3 py-1 rounded text-sm block w-full"
+                    >
+                      Accept and Prepare
+                    </button>
+                    <button
+                      onClick={() => handleWaitingForPickup(order.orderId)}
+                      className="bg-purple-500 hover:bg-purple-600 text-white px-3 py-1 rounded text-sm block w-full"
+                    >
+                      Set to Pickup
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   );
 };
 
-export default TestPage;
+export default OrderPage;
