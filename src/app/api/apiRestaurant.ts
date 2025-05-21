@@ -10,6 +10,7 @@ export const acceptOrder = async (orderAcceptedDto: {
 }) => {
   try {
     const response = await axios.post(`${API_URL}/restaurant/accept-order`, orderAcceptedDto);
+    console.log('Order accepted:', response.data);
     return response.data;
   } catch (error) {
     console.error('Error accepting order:', error);

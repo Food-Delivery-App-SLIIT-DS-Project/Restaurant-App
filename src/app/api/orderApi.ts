@@ -1,7 +1,7 @@
 // orderApi.ts
 import axios from 'axios';
 import Cookies from 'js-cookie';
-import { acceptOrder, getRestaurantById } from "./apiRestaurant";
+import { acceptOrder, findRestaurantsByUserId } from "./apiRestaurant";
 
 const API_URL = process.env.NEXT_PUBLIC_BACKEND_URL;
 const BASE_URL = `${API_URL}/order`;
@@ -47,20 +47,25 @@ export const setOrderPreparing = async (orderId: string) => {
     const userId = Cookies.get("userId"); // Or use cookies/session
     if (!userId) throw new Error("User ID not found");
 
-    const restaurants = await getRestaurantById(userId);
+    const restaurants = await findRestaurantsByUserId(userId);
+    console.log("Restaurants fetched:", restaurants);
 
     if (!restaurants || restaurants.length === 0) {
       throw new Error("No restaurants found for this user");
     }
-
+    const restaurantIds = JSON.parse(Cookies.get("restaurantIds") || "[]");
+    const restaurantId = restaurantIds?.[0] || "";
+    console.log("Restaurant IDs from cookies:", restaurantIds);
+    console.log("Restaurant ID used:", restaurantId);
     const restaurant = restaurants[0]; // Assumes only one restaurant per user
 
     const location = {
-      lat: restaurant.location.latitude.toString(),
-      lng: restaurant.location.longitude.toString(),
+      lat: restaurant.location.latitude,
+      lng: restaurant.location.longitude
     };
 
-    await acceptOrder({ orderId, restaurantId: restaurant.restaurantId, location });
+    console.log("Location fetched:", location);
+    await acceptOrder({ orderId, restaurantId , location });
     return await updateOrderStatus(orderId, "PREPARING");
   } catch (error) {
     console.error("Error in setOrderPreparing:", error);

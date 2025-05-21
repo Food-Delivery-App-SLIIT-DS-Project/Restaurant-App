@@ -13,7 +13,6 @@ const Navbar: React.FC = () => {
     Cookies.remove("userId");
     Cookies.remove("restaurantIds");
 
-    // Optionally, you can redirect the user to the login or home page after logging out
     window.location.href = '/'; // Redirecting to home page (or login page)
   };
 
@@ -42,6 +41,7 @@ const Navbar: React.FC = () => {
       >
         <p className="text-sm">Log Out</p>
       </div>
+     
     </nav>
   );
 };
